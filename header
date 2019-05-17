@@ -1,0 +1,428 @@
+//
+// Created by sadou on 17/05/2019.
+//
+
+#include <cmath>
+#include <assert.h>
+#include <iostream>
+
+#ifndef HW1_AVL_TREE_H
+#define HW1_AVL_TREE_H
+
+using std::cout;
+
+typedef enum {
+    HAS_ONLY_RIGHT_SON,
+    HAS_ONLY_LEFT_SON,
+    HAS_BOTH_SONS,
+    IS_A_LEAF
+} ParentProperty;
+
+typedef enum {
+    IS_A_RIGHT_SON,
+    IS_A_LEFT_SON,
+    IS_THE_ROOT
+} SonProperty;
+
+template<class Key, class T>
+class AvlTree {
+    struct Vertex {
+        Key key;
+        T value;
+        Vertex *parent;
+        Vertex *r_son;
+        Vertex *l_son;
+        int BF;
+        int height;
+
+        Vertex(Key key, T value, Vertex *parent) : key(key), value(value),
+                                                   parent(parent),
+                                                   r_son(nullptr),
+                                                   l_son(nullptr), BF(0),
+                                                   height(0) {}
+        // recursive destructor
+        ~Vertex() {
+            delete l_son;
+            delete r_son;
+        }
+    };
+
+    Vertex *root;
+    int size;
+
+    // this recursive function finds and returns the vertex that has the input key.
+    // returns nullptr if there the key doesn't exist in the tree.
+    Vertex *internalFind(Key key, Vertex *v) {
+        if (v == nullptr) {
+            return nullptr;
+        } else if (v->key == key) {
+            return v;
+        } else if (key < v->key) {
+            return internalFind(key, v->l_son);
+        } else {
+            return internalFind(key, v->r_son);
+        }
+    }
+
+    // this function finds the vertex that will be the parent of a new vertex inserted to the tree with the given key
+    Vertex *findPlaceHolder(Key key, Vertex *v) {
+        if (v == nullptr)
+            return nullptr;
+        if (key < v->key && v->l_son == nullptr)
+            return v;
+        if (key > v->key && v->r_son == nullptr)
+            return v;
+        if (key < v->key) {
+            return findPlaceHolder(key, v->l_son);
+        } else {
+            return findPlaceHolder(key, v->r_son);
+        }
+    }
+
+    // returns the vertex property a parent
+    ParentProperty vPropertyAsParent(Vertex *v) {
+        if (v->r_son == nullptr && v->l_son != nullptr) {
+            return HAS_ONLY_LEFT_SON;
+        } else if (v->r_son != nullptr && v->l_son == nullptr) {
+            return HAS_ONLY_RIGHT_SON;
+        } else if (v->r_son == nullptr && v->l_son == nullptr) {
+            return IS_A_LEAF;
+        } else {
+            return HAS_BOTH_SONS;
+        }
+    }
+
+    // returns the vertex property a son
+    SonProperty vPropertyAsSon(Vertex *v) {
+        if (v->parent == nullptr) {
+            return IS_THE_ROOT;
+        } else if ((v->parent)->l_son == v) {
+            return IS_A_LEFT_SON;
+        } else {
+            return IS_A_RIGHT_SON;
+        }
+    }
+
+    // finds the successor of a given vertex
+    Vertex *findInorderSuccessor(Vertex *v) {
+        if (v->r_son != nullptr) {
+            v = v->r_son;
+            while (v->l_son) {
+                v = v->l_son;
+            }
+            return v;
+        } else {
+            Vertex *s = root;
+            Vertex *last_left = nullptr;
+            while (s) {
+                if (s->key == v->key) break;
+                while (v->key < s->key) {
+                    last_left = s;
+                    s = s->l_son;
+                }
+                while (v->key > s->key) {
+                    s = s->r_son;
+                }
+            }
+            return last_left;
+        }
+    }
+
+    // switches 2 vertexes value
+    void switchVertexes(Vertex *v1, Vertex *v2) {
+        Key tmp_k = v1->key;
+        T tmp_v = v1->value;
+        v1->key = v2->key;
+        v1->value = v2->value;
+        v2->key = tmp_k;
+        v2->value = tmp_v;
+    }
+
+    // delete v from the tree. recursive function.
+    bool internalDelete(Vertex *v_to_delete) {
+        if (v_to_delete == nullptr) {
+            return false;
+        }
+        switch (vPropertyAsParent(v_to_delete)) {
+            case IS_A_LEAF:
+                switch (vPropertyAsSon(v_to_delete)) {
+                    case IS_A_LEFT_SON:
+                        (v_to_delete->parent)->l_son = nullptr;
+                        break;
+                    case IS_A_RIGHT_SON:
+                        (v_to_delete->parent)->r_son = nullptr;
+                        break;
+                    case IS_THE_ROOT:
+                        root = nullptr;
+                        break;
+                }
+                isolateDeleteAndBalance(v_to_delete);
+                break;
+            case HAS_ONLY_LEFT_SON:
+                switch (vPropertyAsSon(v_to_delete)) {
+                    case IS_A_LEFT_SON:
+                        (v_to_delete->parent)->l_son = v_to_delete->l_son;
+                        (v_to_delete->l_son)->parent = v_to_delete->parent;
+                        break;
+                    case IS_A_RIGHT_SON:
+                        (v_to_delete->parent)->r_son = v_to_delete->l_son;
+                        (v_to_delete->l_son)->parent = v_to_delete->parent;
+                        break;
+                    case IS_THE_ROOT:
+                        root = v_to_delete->l_son;
+                        (v_to_delete->l_son)->parent = nullptr;
+                        break;
+                }
+                isolateDeleteAndBalance(v_to_delete);
+                break;
+            case HAS_ONLY_RIGHT_SON:
+                switch (vPropertyAsSon(v_to_delete)) {
+                    case IS_A_LEFT_SON:
+                        (v_to_delete->parent)->l_son = v_to_delete->r_son;
+                        (v_to_delete->r_son)->parent = v_to_delete->parent;
+                        break;
+                    case IS_A_RIGHT_SON:
+                        (v_to_delete->parent)->r_son = v_to_delete->r_son;
+                        (v_to_delete->r_son)->parent = v_to_delete->parent;
+                        break;
+                    case IS_THE_ROOT:
+                        root = v_to_delete->r_son;
+                        (v_to_delete->r_son)->parent = nullptr;
+                        break;
+                }
+                isolateDeleteAndBalance(v_to_delete);
+                break;
+            case HAS_BOTH_SONS:
+                Vertex *successor = findInorderSuccessor(v_to_delete);
+                assert(successor);
+                switchVertexes(v_to_delete, successor);
+                internalDelete(successor);
+                break;
+        }
+        return true;
+    }
+
+    void isolateDeleteAndBalance(Vertex *v) {
+        Vertex *parent = v->parent;
+        v->l_son = nullptr;
+        v->r_son = nullptr;
+        delete v;
+        Balance(parent);
+    }
+
+    // balance the tree after insert/ delete. updates height and BF and rotates if needed
+    void Balance(Vertex *v) {
+        if (v == nullptr) {
+            return;
+        }
+        bool height_flag = updateHeight(v);
+        bool BF_flag = updateBF(v);
+        if (!height_flag && !BF_flag) return;
+
+        if (v->BF >= 2 && v->l_son->BF >= 0) {
+            llRotation(v);
+        } else if (v->BF >= 2 && v->l_son->BF < 0) {
+            lrRotation(v);
+        } else if (v->BF <= -2 && v->r_son->BF > 0) {
+            rlRotation(v);
+        } else if (v->BF <= -2 && v->r_son->BF <= 0) {
+            rrRotation(v);
+        }
+
+        Balance(v->parent);
+    }
+
+    void llRotation(Vertex *b) {
+        Vertex *a = b->l_son;
+        assert(a && b);
+        Vertex *ar = a->r_son;
+
+        a->r_son = b;
+        b->l_son = ar;
+        if (ar) ar->parent = b;
+        switchParentOfSubtree(b, a);
+        b->parent = a;
+
+        updateHeight(b);
+        updateBF(b);
+
+        return;
+    }
+
+    void rrRotation(Vertex *a) {
+        Vertex *b = a->r_son;
+        assert(a && b);
+        Vertex *bl = b->l_son;
+
+        b->l_son = a;
+        a->r_son = bl;
+        if (bl) bl->parent = a;
+        switchParentOfSubtree(a, b);
+        a->parent = b;
+
+        updateHeight(a);
+        updateBF(a);
+
+        return;
+    }
+
+    void lrRotation(Vertex *v) {
+        assert(v->l_son);
+        rrRotation(v->l_son);
+        llRotation(v);
+    }
+
+    void rlRotation(Vertex *v) {
+        assert(v->r_son);
+        llRotation(v->r_son);
+        rrRotation(v);
+    }
+
+    // this function is being used in all of the rotations
+    void switchParentOfSubtree(Vertex *old_subroot, Vertex *new_subroot) {
+        Vertex *parent = old_subroot->parent;
+        SonProperty propertyAsSon = vPropertyAsSon(old_subroot);
+        if (propertyAsSon == IS_THE_ROOT) {
+            root = new_subroot;
+        } else if (propertyAsSon == IS_A_LEFT_SON) {
+            parent->l_son = new_subroot;
+        } else if (propertyAsSon == IS_A_RIGHT_SON) {
+            parent->r_son = new_subroot;
+        }
+        new_subroot->parent = parent;
+    }
+
+    bool updateHeight(Vertex *v) {
+        assert(v);
+        int new_height;
+        if (v->l_son == nullptr && v->r_son == nullptr) {
+            new_height = 0;
+        } else if (v->l_son == nullptr) {
+            new_height = (v->r_son)->height + 1;
+        } else if (v->r_son == nullptr) {
+            new_height = (v->l_son)->height + 1;
+        } else {
+            new_height = (int) fmax(v->l_son->height, v->r_son->height) + 1;
+        }
+        if (v->height == new_height) {
+            return false;
+        }
+        v->height = new_height;
+        return true;
+    }
+
+    bool updateBF(Vertex *v) {
+        assert(v);
+        int new_BF;
+        if (v->l_son == nullptr && v->r_son == nullptr) {
+            new_BF = 0;
+        } else if (v->l_son == nullptr) {
+            new_BF = -1 - (v->r_son)->height;
+        } else if (v->r_son == nullptr) {
+            new_BF = (v->l_son)->height - (-1);
+        } else {
+            new_BF = (v->l_son)->height - (v->r_son)->height;
+        }
+        if (v->BF == new_BF) {
+            return false;
+        }
+        v->BF = new_BF;
+        return true;
+    }
+
+public:
+
+    AvlTree() : root(nullptr), size(0) {}
+
+    ~AvlTree() {
+        delete root;
+    }
+
+    Vertex *Add(Key key, T value) {
+        Vertex *parent = findPlaceHolder(key, root);
+        Vertex *new_v = new Vertex(key, value, parent);
+        if (parent == nullptr) {
+            root = new_v;
+        } else if (key < parent->key) {
+            parent->l_son = new_v;
+        } else {
+            parent->r_son = new_v;
+        }
+        Balance(parent);
+        size++;
+        return new_v;
+    }
+
+    T *Find(Key key) {
+        Vertex *v = internalFind(key, root);
+        if (v == nullptr) {
+            return nullptr;
+        }
+        return &(v->value);
+    }
+
+    bool DeleteByPointer(void *p_vertex) {
+        Vertex *v = (Vertex *) p_vertex;
+        bool was_deleted = internalDelete(v);
+        if (was_deleted) {
+            size--;
+        }
+        return was_deleted;
+    }
+
+    bool Delete(Key key) {
+        Vertex *v_to_delete = internalFind(key, root);
+        return DeleteByPointer(v_to_delete);
+    }
+
+    int getSize() {
+        return size;
+    }
+
+    // functor for traversing the tree.
+    class TreeOp {
+    public:
+        virtual void operator()(Key k, T val) = 0;
+    };
+
+    void inOrderTraversal(TreeOp &o) {
+        inOrderTraversalInternal(root, o);
+    }
+    
+    //print the tree to stdout (cout). using by sending v=nullptr, rec_deep=-1
+    void displayTree(Vertex *v, int rec_deep) {
+        int i, level=rec_deep;
+        Vertex *ptr;
+        if (level == -1) {
+            ptr = root;
+            level = 0;
+        }
+        else {
+            ptr = v;
+        }
+        if (ptr != NULL) {
+            displayTree(ptr->r_son, level + 1);
+            printf("\n");
+            if (ptr == root)
+                cout << "Root -> ";
+            for (i = 0; i < level && ptr != root; i++)
+                cout << "        ";
+            cout << "{" << ptr->value << "," << ptr->key << "}";
+            cout << " high-" << ptr->height;
+            if (ptr->parent) {
+                cout << " parent-" << ptr->parent->value;
+            }
+            displayTree(ptr->l_son, level + 1);
+        }
+    }
+
+private:
+    void inOrderTraversalInternal(Vertex *v, TreeOp &o) {
+        if (v == nullptr) return;
+        inOrderTraversalInternal(v->l_son, o);
+        o(v->key, v->value);
+        inOrderTraversalInternal(v->r_son, o);
+    }
+};
+
+#endif //GUY_GIT_HEADER_H
